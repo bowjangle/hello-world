@@ -42,4 +42,5 @@ cd PrayerTracker
 
 - Some phones (Xiaomi, Huawei, Oppo, Samsung with aggressive battery saving) kill background alarms. If reminders don't arrive, set the app's battery usage to **Unrestricted**.
 - If you travel, update the location in Settings – it is not tracked automatically.
-- Want a different sound? Replace `app/src/main/res/raw/chime.wav` **and** change the channel id in `Notifications.kt` (Android locks a channel's sound after first install). Or just change it in Android's notification settings for the app.
+- **No sound?** Tap **Test notification sound** on the main screen. The app lists anything on the phone that is silencing it (silent/vibrate mode, Do Not Disturb, volume at 0, or the reminder category set to silent) with a button to fix it.
+- Want a different sound? Replace `app/src/main/res/raw/chime.wav` **and** bump the channel id in `Notifications.kt` and add the old one to `OLD_CHANNELS` (Android locks a channel's sound after first install). Or just change it in Android's notification settings for the app.

@@ -106,6 +106,18 @@ class MainActivity : Activity() {
             ).apply { pad(top = 24) }
         )
         root.addView(button("Settings") { showSettings() })
+        root.addView(button("Test notification sound") {
+            Notifications.showTest(this)
+            val problems = Notifications.soundProblems(this)
+            val enabled = getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
+            toast(
+                when {
+                    !enabled -> "Notifications are off for this app — turn them on first."
+                    problems.isNotEmpty() -> problems.first()
+                    else -> "Sent — you should hear the chime now."
+                }
+            )
+        })
     }
 
     private fun prayerRow(w: PrayerWindow, now: Long): View {
@@ -157,14 +169,28 @@ class MainActivity : Activity() {
     }
 
     private fun warnings() {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
+        val nm = getSystemService(android.app.NotificationManager::class.java)
+        if (!nm.areNotificationsEnabled()) {
             root.addView(text("⚠ Notifications are off — you won't get reminders.", 14f).apply { pad(top = 16) })
             root.addView(button("Allow notifications") {
+                if (Build.VERSION.SDK_INT >= 33 && !store.askedNotificationPermission) {
+                    store.askedNotificationPermission = true
+                    requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), RC_NOTIF)
+                } else {
+                    startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                    )
+                }
+            })
+        } else {
+            val soundProblems = Notifications.soundProblems(this)
+            for (p in soundProblems) root.addView(text("🔇 $p", 14f).apply { pad(top = 16) })
+            if (soundProblems.isNotEmpty()) root.addView(button("Open sound settings for reminders") {
                 startActivity(
-                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                         .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CHANNEL)
                 )
             })
         }

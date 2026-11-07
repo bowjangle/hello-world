@@ -8,6 +8,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.net.Uri
 import android.text.format.DateFormat
 import java.util.Date
@@ -15,10 +16,13 @@ import java.util.Date
 object Notifications {
     // Channel settings (sound, importance) are frozen by Android once created.
     // Bump this id if you ever change the sound so the new one takes effect.
-    private const val CHANNEL = "prayer_v1"
+    // v1 had a chime that was too quiet; v2 is the louder one.
+    const val CHANNEL = "prayer_v2"
+    private val OLD_CHANNELS = listOf("prayer_v1")
 
     fun ensureChannel(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
+        OLD_CHANNELS.forEach { if (nm.getNotificationChannel(it) != null) nm.deleteNotificationChannel(it) }
         if (nm.getNotificationChannel(CHANNEL) != null) return
         val sound = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${ctx.packageName}/${R.raw.chime}")
         val ch = NotificationChannel(CHANNEL, "Prayer reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
@@ -73,6 +77,38 @@ object Notifications {
             .addAction(action(ctx, "Not yet", Scheduler.ACTION_NOT_YET, 300 + w.prayer.ordinal, w))
             .build()
         notify(ctx, w.prayer, n)
+    }
+
+    /** Fires a sample notification right now so you can hear the sound without waiting for a prayer. */
+    fun showTest(ctx: Context) {
+        val n = base(ctx, "Test: Dhuhr time", "This is what prayer reminders look and sound like.").build()
+        ctx.getSystemService(NotificationManager::class.java).notify(99, n)
+    }
+
+    /**
+     * Reasons the chime would NOT be heard, in plain words. Empty list = should be audible.
+     * These are phone settings the app can't override, only point you to.
+     */
+    fun soundProblems(ctx: Context): List<String> {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        val am = ctx.getSystemService(AudioManager::class.java)
+        val out = mutableListOf<String>()
+        if (!nm.areNotificationsEnabled()) return out // reported separately by the main screen
+        val ch = nm.getNotificationChannel(CHANNEL)
+        if (ch != null && (ch.importance < NotificationManager.IMPORTANCE_DEFAULT || ch.sound == null)) {
+            out += "The \"Prayer reminders\" category is set to silent in Android settings."
+        }
+        if (nm.currentInterruptionFilter > NotificationManager.INTERRUPTION_FILTER_ALL) {
+            out += "Do Not Disturb is on, which silences notifications."
+        }
+        when (am.ringerMode) {
+            AudioManager.RINGER_MODE_SILENT -> out += "Your phone is on silent."
+            AudioManager.RINGER_MODE_VIBRATE -> out += "Your phone is on vibrate, so no sound plays."
+        }
+        if (am.ringerMode == AudioManager.RINGER_MODE_NORMAL && am.getStreamVolume(AudioManager.STREAM_NOTIFICATION) == 0) {
+            out += "Notification volume is at 0."
+        }
+        return out
     }
 
     private fun notify(ctx: Context, p: Prayer, n: Notification) {
