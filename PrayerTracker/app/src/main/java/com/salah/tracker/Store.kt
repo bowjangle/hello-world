@@ -29,6 +29,10 @@ class Store(ctx: Context) {
             .getOrDefault(Madhab.SHAFI)
         set(v) { prefs.edit().putString("madhab", v.name).apply() }
 
+    var sound: String
+        get() = prefs.getString("sound", null) ?: Sounds.DEFAULT_KEY
+        set(v) { prefs.edit().putString("sound", v).apply() }
+
     var askedNotificationPermission: Boolean
         get() = prefs.getBoolean("asked_notif", false)
         set(v) { prefs.edit().putBoolean("asked_notif", v).apply() }

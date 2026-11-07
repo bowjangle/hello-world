@@ -4,36 +4,28 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
 import android.media.AudioManager
-import android.net.Uri
 import android.text.format.DateFormat
 import java.util.Date
 
 object Notifications {
-    // Channel settings (sound, importance) are frozen by Android once created.
-    // Bump this id if you ever change the sound so the new one takes effect.
-    // v1 had a chime that was too quiet; v2 is the louder one.
-    const val CHANNEL = "prayer_v2"
-    private val OLD_CHANNELS = listOf("prayer_v1")
+    /** The channel for the currently chosen sound. */
+    fun channel(ctx: Context) = Sounds.channelId(Store(ctx).sound)
 
+    /** Creates the channel for the chosen sound and removes channels for sounds no longer used. */
     fun ensureChannel(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java)
-        OLD_CHANNELS.forEach { if (nm.getNotificationChannel(it) != null) nm.deleteNotificationChannel(it) }
-        if (nm.getNotificationChannel(CHANNEL) != null) return
-        val sound = Uri.parse("${ContentResolver.SCHEME_ANDROID_RESOURCE}://${ctx.packageName}/${R.raw.chime}")
-        val ch = NotificationChannel(CHANNEL, "Prayer reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
+        val key = Store(ctx).sound
+        val id = Sounds.channelId(key)
+        nm.notificationChannels
+            .filter { it.id.startsWith("prayer") && it.id != id }
+            .forEach { nm.deleteNotificationChannel(it.id) }
+        if (nm.getNotificationChannel(id) != null) return
+        val ch = NotificationChannel(id, "Prayer reminders", NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = "Prayer time alerts and \"did you pray?\" check-ins"
-            setSound(
-                sound,
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                    .build()
-            )
+            setSound(Sounds.uriFor(ctx, key), Sounds.AUDIO_ATTRS)
             enableVibration(false)
         }
         nm.createNotificationChannel(ch)
@@ -49,7 +41,7 @@ object Notifications {
             ctx, 0, Intent(ctx, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE
         )
-        return Notification.Builder(ctx, CHANNEL)
+        return Notification.Builder(ctx, channel(ctx))
             .setSmallIcon(R.drawable.ic_notif)
             .setColor(ctx.getColor(R.color.brand))
             .setContentTitle(title)
@@ -94,7 +86,8 @@ object Notifications {
         val am = ctx.getSystemService(AudioManager::class.java)
         val out = mutableListOf<String>()
         if (!nm.areNotificationsEnabled()) return out // reported separately by the main screen
-        val ch = nm.getNotificationChannel(CHANNEL)
+        if (Store(ctx).sound == Sounds.SILENT) return out // you chose silence; nothing to warn about
+        val ch = nm.getNotificationChannel(channel(ctx))
         if (ch != null && (ch.importance < NotificationManager.IMPORTANCE_DEFAULT || ch.sound == null)) {
             out += "The \"Prayer reminders\" category is set to silent in Android settings."
         }

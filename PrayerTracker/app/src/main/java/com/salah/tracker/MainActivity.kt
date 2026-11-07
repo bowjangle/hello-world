@@ -106,7 +106,8 @@ class MainActivity : Activity() {
             ).apply { pad(top = 24) }
         )
         root.addView(button("Settings") { showSettings() })
-        root.addView(button("Test notification sound") {
+        root.addView(button("Reminder sound: ${Sounds.label(this, store.sound)}") { showSoundPicker() })
+        root.addView(button("Test notification") {
             Notifications.showTest(this)
             val problems = Notifications.soundProblems(this)
             val enabled = getSystemService(android.app.NotificationManager::class.java).areNotificationsEnabled()
@@ -114,7 +115,8 @@ class MainActivity : Activity() {
                 when {
                     !enabled -> "Notifications are off for this app — turn them on first."
                     problems.isNotEmpty() -> problems.first()
-                    else -> "Sent — you should hear the chime now."
+                    store.sound == Sounds.SILENT -> "Sent (silently — you chose no sound)."
+                    else -> "Sent — you should hear it now."
                 }
             )
         })
@@ -190,7 +192,7 @@ class MainActivity : Activity() {
                 startActivity(
                     Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
                         .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                        .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.CHANNEL)
+                        .putExtra(Settings.EXTRA_CHANNEL_ID, Notifications.channel(this))
                 )
             })
         }
@@ -200,6 +202,75 @@ class MainActivity : Activity() {
                 startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
             })
         }
+    }
+
+    // ---------- Sound picker ----------
+
+    private fun showSoundPicker() {
+        // Rows: built-in sounds, then phone default, a sound from the phone, silent.
+        val keys = Sounds.BUILT_IN.map { it.key } + listOf(Sounds.PHONE_DEFAULT, PICK_FROM_PHONE, Sounds.SILENT)
+        val current = store.sound
+        val labels = Sounds.BUILT_IN.map { it.label } + listOf(
+            "Phone's default sound",
+            if (current.startsWith("uri:")) Sounds.label(this, current) + "  (change…)" else "Choose from phone sounds…",
+            "Silent (no sound)",
+        )
+        var picked = when {
+            current.startsWith("uri:") -> keys.indexOf(PICK_FROM_PHONE)
+            else -> keys.indexOf(current).takeIf { it >= 0 } ?: keys.indexOf(Sounds.DEFAULT_KEY)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Reminder sound")
+            .setSingleChoiceItems(labels.toTypedArray(), picked) { dialog, which ->
+                if (keys[which] == PICK_FROM_PHONE) {
+                    dialog.dismiss()
+                    openPhoneSoundPicker()
+                } else {
+                    picked = which
+                    Sounds.preview(this, keys[which]) // tap = listen
+                }
+            }
+            .setPositiveButton("Use this") { _, _ ->
+                if (keys[picked] != PICK_FROM_PHONE) saveSound(keys[picked])
+            }
+            .setNegativeButton("Cancel", null)
+            .setOnDismissListener { Sounds.stopPreview() }
+            .show()
+    }
+
+    private fun openPhoneSoundPicker() {
+        val existing = store.sound.takeIf { it.startsWith("uri:") }?.let { Sounds.uriFor(this, it) }
+        val intent = Intent(android.media.RingtoneManager.ACTION_RINGTONE_PICKER)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TYPE, android.media.RingtoneManager.TYPE_NOTIFICATION)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_TITLE, "Reminder sound")
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, false)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+            .putExtra(android.media.RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, existing)
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, RC_RINGTONE)
+        } catch (e: android.content.ActivityNotFoundException) {
+            toast("This phone has no sound picker.")
+        }
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        @Suppress("DEPRECATION")
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != RC_RINGTONE || resultCode != RESULT_OK) return
+        val uri: Uri = (if (Build.VERSION.SDK_INT >= 33)
+            data?.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+        else @Suppress("DEPRECATION") data?.getParcelableExtra(android.media.RingtoneManager.EXTRA_RINGTONE_PICKED_URI))
+            ?: return
+        saveSound(Sounds.uriKey(uri))
+    }
+
+    private fun saveSound(key: String) {
+        store.sound = key
+        Notifications.ensureChannel(this) // new channel with the new sound; old one removed
+        toast("Reminder sound: ${Sounds.label(this, key)}")
+        render()
     }
 
     // ---------- Settings ----------
@@ -357,5 +428,7 @@ class MainActivity : Activity() {
     companion object {
         private const val RC_NOTIF = 1
         private const val RC_LOCATION = 2
+        private const val RC_RINGTONE = 3
+        private const val PICK_FROM_PHONE = "pick"
     }
 }
