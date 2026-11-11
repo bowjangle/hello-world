@@ -11,7 +11,16 @@ class AlarmReceiver : BroadcastReceiver() {
 
         when (intent.action) {
             Scheduler.ACTION_NAG -> {
-                Notifications.showNag(ctx, Scheduler.pending(ctx, now), alert = true)
+                val store = Store(ctx)
+                val today = LocalDate.now()
+                val cutoff = Scheduler.cutoff(ctx, today)
+                if (store.finalShownFor != today && cutoff != null && now >= cutoff - 60_000L) {
+                    // The cutoff: one last reminder (only if something is unchecked), then quiet.
+                    store.finalShownFor = today
+                    Notifications.showNag(ctx, Scheduler.pending(ctx, now), alert = true)
+                } else if (!Scheduler.pastCutoff(ctx, now)) {
+                    Notifications.showNag(ctx, Scheduler.pending(ctx, now), alert = true)
+                }
                 Scheduler.scheduleNag(ctx, now, fromNag = true)
                 return
             }

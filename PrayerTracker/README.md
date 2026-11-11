@@ -7,10 +7,12 @@ A small, offline Android app that tracks whether you prayed your five daily pray
 1. **At each prayer time** – a short notification ("Dhuhr time") with the sound you picked (default: a soft bell). No vibration, no looping sound.
    If you pray right away you can tap **I prayed ✓** and you won't be asked again.
 2. **30 minutes later** – "Did you pray Dhuhr?" with **Yes ✓** / **Not yet**.
-3. **Every 10 minutes after that** – asked again, **and it never stops on its own**. A prayer you haven't checked keeps reminding you after its time is over, overnight, and on later days, until you check it.
-   - Several unchecked prayers give **one** notification ("You haven't checked Dhuhr (yesterday) · 2 more unchecked"), with one sound every 10 minutes. Tap ✓ and it moves on to the next.
+3. **Every 10 minutes after that** – asked again (even after the prayer's time is over) until you tap ✓, **until 11 pm**.
+4. **At 11 pm** – if anything is still unchecked, one last reminder that says so: *"This is the last notification — no more reminders until tomorrow."* Then it's quiet until the next day. Unchecked prayers stay ✗ in the history, and you can still tick them there.
+   - If Isha starts after 10:30 pm (some places in summer), the last reminder comes 30 minutes after Isha instead, so Isha still gets one.
+   - Known gap: far north in summer (e.g. the UK in June) Isha can start after midnight; it then gets its "Isha time" alert but no "did you pray?" reminders.
+   - Several unchecked prayers give **one** notification ("Did you pray Asr? Also unchecked: Dhuhr"), with one sound every 10 minutes. Tap ✓ and it moves on to the next.
    - **Not yet** only dismisses it; it comes back in 10 minutes.
-   - Prayers from before you installed the app are never counted.
 
 The main screen shows today's 5 prayers with checkboxes (tick or untick any time) and the last 7 days (`✓ ✓ ✗ ✓ ✓  4/5`). Tap a past day to check or uncheck its prayers.
 

@@ -9,7 +9,6 @@ import android.content.Intent
 import android.media.AudioManager
 import android.text.format.DateFormat
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import java.util.Date
 
 object Notifications {
@@ -81,25 +80,31 @@ object Notifications {
 
         val w = pending.first()
         val now = System.currentTimeMillis()
-        val day = when (w.date) {
-            LocalDate.now() -> ""
-            LocalDate.now().minusDays(1) -> " (yesterday)"
-            else -> " (" + w.date.format(DateTimeFormatter.ofPattern("EEE d MMM")) + ")"
+        val last = Store(ctx).finalShownFor == LocalDate.now()
+        val others = pending.drop(1).joinToString(", ") { it.prayer.label }
+        val title: String
+        val text: String
+        if (last) {
+            title = "Last reminder today: ${w.prayer.label} not checked"
+            text = (if (others.isNotEmpty()) "Also unchecked: $others. " else "") +
+                "This is the last notification — no more reminders until tomorrow."
+        } else {
+            title = if (now < w.end) "Did you pray ${w.prayer.label}?" else "You haven't checked ${w.prayer.label}"
+            text = (if (now < w.end) "Time ends at ${time(ctx, w.end)}." else "Tap ✓ once you've prayed it.") +
+                (if (others.isNotEmpty()) "  Also unchecked: $others." else "")
         }
-        val title = if (now < w.end) "Did you pray ${w.prayer.label}?"
-        else "You haven't checked ${w.prayer.label}$day"
-        val text = (if (now < w.end) "Time ends at ${time(ctx, w.end)}." else "Tap ✓ once you've prayed it.") +
-            (if (pending.size > 1) "  ${pending.size - 1} more unchecked." else "")
         cancel(ctx, w.prayer) // the "X time" alert for this prayer is now redundant
-        val n = base(ctx, title, text)
+        val b = base(ctx, title, text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
             .setOnlyAlertOnce(!alert)
             .setAutoCancel(false)
             .addAction(action(ctx, "Yes, prayed ✓", Scheduler.ACTION_MARK_PRAYED, 400, w))
-            .addAction(Notification.Action.Builder(null, "Not yet", PendingIntent.getBroadcast(
-                ctx, 401, Intent(ctx, AlarmReceiver::class.java).setAction(Scheduler.ACTION_NOT_YET),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )).build())
-            .build()
+        // "Not yet" would be a lie on the last one: there is no "later" tonight.
+        if (!last) b.addAction(Notification.Action.Builder(null, "Not yet", PendingIntent.getBroadcast(
+            ctx, 401, Intent(ctx, AlarmReceiver::class.java).setAction(Scheduler.ACTION_NOT_YET),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )).build())
+        val n = b.build()
         nm.notify(NAG_ID, n)
     }
 
