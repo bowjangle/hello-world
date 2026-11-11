@@ -7,17 +7,12 @@ A small, offline Android app that tracks whether you prayed your five daily pray
 1. **At each prayer time** – a short notification ("Dhuhr time") with the sound you picked (default: a soft bell). No vibration, no looping sound.
    If you pray right away you can tap **I prayed ✓** and you won't be asked again.
 2. **30 minutes later** – "Did you pray Dhuhr?" with **Yes ✓** / **Not yet**.
-3. **Every 10 minutes after that** – the same question until you tap **Yes**, or until that prayer's time ends:
+3. **Every 10 minutes after that** – asked again, **and it never stops on its own**. A prayer you haven't checked keeps reminding you after its time is over, overnight, and on later days, until you check it.
+   - Several unchecked prayers give **one** notification ("You haven't checked Dhuhr (yesterday) · 2 more unchecked"), with one sound every 10 minutes. Tap ✓ and it moves on to the next.
+   - **Not yet** only dismisses it; it comes back in 10 minutes.
+   - Prayers from before you installed the app are never counted.
 
-   | Prayer  | Reminders stop at |
-   |---------|-------------------|
-   | Fajr    | Sunrise |
-   | Dhuhr   | Asr |
-   | Asr     | Maghrib |
-   | Maghrib | Isha |
-   | Isha    | Middle of the night (so you aren't pinged all night) |
-
-The main screen shows today's 5 prayers with checkboxes (tick or untick any time) and the last 7 days (`✓ ✓ ✗ ✓ ✓  4/5`).
+The main screen shows today's 5 prayers with checkboxes (tick or untick any time) and the last 7 days (`✓ ✓ ✗ ✓ ✓  4/5`). Tap a past day to check or uncheck its prayers.
 
 Prayer times are calculated on the phone from your coordinates (using the [Adhan](https://github.com/batoulapps/adhan-java) library) – no internet, no account, no ads. Choose your calculation method (MWL, ISNA, Umm al-Qura, Karachi, …) and Asr convention (Standard / Hanafi) in **Settings**.
 

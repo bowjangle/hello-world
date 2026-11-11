@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.media.AudioManager
 import android.text.format.DateFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.Date
 
 object Notifications {
@@ -57,19 +59,51 @@ object Notifications {
         ).build()
 
     fun showPrayerTime(ctx: Context, w: PrayerWindow) {
+        Prayer.entries.filter { it != w.prayer }.forEach { cancel(ctx, it) } // drop stale "X time" alerts
         val n = base(ctx, "${w.prayer.label} time", "It's ${time(ctx, w.start)} — time to pray.")
             .addAction(action(ctx, "I prayed ✓", Scheduler.ACTION_MARK_PRAYED, 200 + w.prayer.ordinal, w))
             .build()
         notify(ctx, w.prayer, n)
     }
 
-    fun showCheck(ctx: Context, w: PrayerWindow) {
-        val n = base(ctx, "Did you pray ${w.prayer.label}?", "Time ends at ${time(ctx, w.end)}.")
-            .addAction(action(ctx, "Yes ✓", Scheduler.ACTION_MARK_PRAYED, 200 + w.prayer.ordinal, w))
-            .addAction(action(ctx, "Not yet", Scheduler.ACTION_NOT_YET, 300 + w.prayer.ordinal, w))
+    private const val NAG_ID = 50
+
+    /**
+     * The single "did you pray?" reminder. Shows the oldest unchecked prayer, plus how many others
+     * are waiting. [alert] = false updates it quietly (after you check one off) and does nothing
+     * if you had dismissed it — the next 10-minute reminder will bring it back.
+     */
+    fun showNag(ctx: Context, pending: List<PrayerWindow>, alert: Boolean) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        if (pending.isEmpty()) { nm.cancel(NAG_ID); return }
+        if (!alert && nm.activeNotifications.none { it.id == NAG_ID }) return
+        if (!nm.areNotificationsEnabled()) return
+
+        val w = pending.first()
+        val now = System.currentTimeMillis()
+        val day = when (w.date) {
+            LocalDate.now() -> ""
+            LocalDate.now().minusDays(1) -> " (yesterday)"
+            else -> " (" + w.date.format(DateTimeFormatter.ofPattern("EEE d MMM")) + ")"
+        }
+        val title = if (now < w.end) "Did you pray ${w.prayer.label}?"
+        else "You haven't checked ${w.prayer.label}$day"
+        val text = (if (now < w.end) "Time ends at ${time(ctx, w.end)}." else "Tap ✓ once you've prayed it.") +
+            (if (pending.size > 1) "  ${pending.size - 1} more unchecked." else "")
+        cancel(ctx, w.prayer) // the "X time" alert for this prayer is now redundant
+        val n = base(ctx, title, text)
+            .setOnlyAlertOnce(!alert)
+            .setAutoCancel(false)
+            .addAction(action(ctx, "Yes, prayed ✓", Scheduler.ACTION_MARK_PRAYED, 400, w))
+            .addAction(Notification.Action.Builder(null, "Not yet", PendingIntent.getBroadcast(
+                ctx, 401, Intent(ctx, AlarmReceiver::class.java).setAction(Scheduler.ACTION_NOT_YET),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )).build())
             .build()
-        notify(ctx, w.prayer, n)
+        nm.notify(NAG_ID, n)
     }
+
+    fun cancelNag(ctx: Context) = ctx.getSystemService(NotificationManager::class.java).cancel(NAG_ID)
 
     /** Fires a sample notification right now so you can hear the sound without waiting for a prayer. */
     fun showTest(ctx: Context) {
@@ -113,6 +147,4 @@ object Notifications {
     fun cancel(ctx: Context, p: Prayer) =
         ctx.getSystemService(NotificationManager::class.java).cancel(nid(p))
 
-    fun clearAll(ctx: Context) =
-        ctx.getSystemService(NotificationManager::class.java).cancelAll()
 }

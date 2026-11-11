@@ -94,6 +94,7 @@ class MainActivity : Activity() {
         for (w in windows) root.addView(prayerRow(w, now))
 
         root.addView(section("Last 7 days"))
+        root.addView(text("Tap a day to check or uncheck its prayers.", 12f, dim = true))
         for (i in 1..7) root.addView(historyRow(today.minusDays(i.toLong())))
 
         val loc = store.location!!
@@ -128,7 +129,7 @@ class MainActivity : Activity() {
             prayed -> "prayed"
             now < w.start -> "upcoming"
             now < w.end -> "now"
-            else -> "missed"
+            else -> "not checked"
         }
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -142,14 +143,7 @@ class MainActivity : Activity() {
             // Can't have prayed before the time has come in.
             isEnabled = prayed || now >= w.start
             setOnCheckedChangeListener { _, checked ->
-                store.setPrayed(w.date, w.prayer, checked)
-                if (checked) {
-                    Scheduler.cancelCheck(this@MainActivity, w.prayer)
-                    Notifications.cancel(this@MainActivity, w.prayer)
-                } else {
-                    Scheduler.rescheduleAll(this@MainActivity)
-                }
-                render()
+                markChanged(w.date, w.prayer, checked)
             }
         }
         row.addView(cb, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
@@ -158,9 +152,42 @@ class MainActivity : Activity() {
         return row
     }
 
+    /** Single place that reacts to checking/unchecking a prayer, from any screen. */
+    private fun markChanged(date: LocalDate, p: Prayer, checked: Boolean) {
+        store.setPrayed(date, p, checked)
+        if (checked) Notifications.cancel(this, p)
+        Scheduler.rescheduleAll(this)
+        Notifications.showNag(this, Scheduler.pending(this), alert = false)
+        render()
+    }
+
+    /** Tap a past day to check/uncheck its prayers. */
+    private fun editDay(date: LocalDate) {
+        val prayers = Prayer.entries
+        val checked = prayers.map { store.isPrayed(date, it) }.toBooleanArray()
+        AlertDialog.Builder(this)
+            .setTitle(date.format(DateTimeFormatter.ofPattern("EEEE d MMMM")))
+            .setMultiChoiceItems(prayers.map { it.label }.toTypedArray(), checked) { _, i, v -> checked[i] = v }
+            .setPositiveButton("Save") { _, _ ->
+                prayers.forEachIndexed { i, p ->
+                    if (store.isPrayed(date, p) != checked[i]) markChanged(date, p, checked[i])
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun historyRow(date: LocalDate): View {
         val marks = Prayer.entries.map { store.isPrayed(date, it) }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; pad(top = 4, bottom = 4) }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            pad(top = 8, bottom = 8)
+            isClickable = true
+            setOnClickListener { editDay(date) }
+            val tv = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, tv, true)
+            setBackgroundResource(tv.resourceId)
+        }
         row.addView(
             text(date.format(DateTimeFormatter.ofPattern("EEE d MMM")), 15f),
             LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f)

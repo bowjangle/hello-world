@@ -44,6 +44,36 @@ class Store(ctx: Context) {
     @android.annotation.SuppressLint("ApplySharedPref")
     fun setPrayed(date: LocalDate, p: Prayer, prayed: Boolean) {
         // commit() not apply(): this is often called from a BroadcastReceiver that may be killed right after.
-        prefs.edit().putBoolean(key(date, p), prayed).commit()
+        val e = prefs.edit().putBoolean(key(date, p), prayed)
+        // Unchecking an old day means reminders must look back that far again.
+        if (!prayed && scanFrom?.let { date < it } == true) e.putString("scan_from", date.toString())
+        e.commit()
     }
+
+    /**
+     * Reminders only cover prayers from this moment on, so installing the app doesn't nag you
+     * about years of prayers it never knew about. First run after the 1.3 update: starts from
+     * the first day you checked anything, so prayers you already skipped are included.
+     */
+    val trackingSince: Long
+        get() {
+            if (prefs.contains("tracking_since")) return prefs.getLong("tracking_since", 0)
+            val firstUsed = prefs.all.entries
+                .filter { it.key.startsWith("prayed_") && it.value == true }
+                .mapNotNull { runCatching { LocalDate.parse(it.key.substring(7, 17)) }.getOrNull() }
+                .minOrNull()
+            val v = firstUsed?.atStartOfDay(java.time.ZoneId.systemDefault())?.toInstant()?.toEpochMilli()
+                ?: System.currentTimeMillis()
+            prefs.edit().putLong("tracking_since", v).apply()
+            return v
+        }
+
+    /** Every day before this is fully checked (an optimisation for [Scheduler.pending]). */
+    var scanFrom: LocalDate?
+        get() = prefs.getString("scan_from", null)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        set(v) { prefs.edit().putString("scan_from", v?.toString()).apply() }
+
+    var nextNagAt: Long
+        get() = prefs.getLong("next_nag_at", 0)
+        set(v) { prefs.edit().putLong("next_nag_at", v).apply() }
 }

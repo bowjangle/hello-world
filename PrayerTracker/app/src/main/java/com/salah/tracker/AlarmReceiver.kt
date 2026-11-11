@@ -7,44 +7,43 @@ import java.time.LocalDate
 
 class AlarmReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
+        val now = System.currentTimeMillis()
+
+        when (intent.action) {
+            Scheduler.ACTION_NAG -> {
+                Notifications.showNag(ctx, Scheduler.pending(ctx, now), alert = true)
+                Scheduler.scheduleNag(ctx, now, fromNag = true)
+                return
+            }
+            // The nag repeats on its own in 10 minutes; just dismiss it for now.
+            Scheduler.ACTION_NOT_YET -> {
+                Notifications.cancelNag(ctx)
+                return
+            }
+        }
+
         val prayer = intent.getStringExtra(Scheduler.EXTRA_PRAYER)
             ?.let { runCatching { Prayer.valueOf(it) }.getOrNull() } ?: return
         val date = intent.getStringExtra(Scheduler.EXTRA_DATE)
             ?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: return
         val store = Store(ctx)
-        val now = System.currentTimeMillis()
 
         when (intent.action) {
             Scheduler.ACTION_PRAYER_TIME -> {
                 val w = PrayerTimesCalc.window(ctx, date, prayer)
                 // Always chain the next prayer first so the cycle never breaks.
                 Scheduler.scheduleNextPrayerTime(ctx, maxOf(now, w?.start ?: now))
-                if (w == null || store.isPrayed(date, prayer)) return
-                Notifications.clearAll(ctx) // drop any stale "did you pray X?" from the previous prayer
-                Notifications.showPrayerTime(ctx, w)
-                val firstCheck = w.start + Scheduler.FIRST_CHECK_DELAY_MS
-                if (firstCheck < w.end) Scheduler.scheduleCheck(ctx, w, firstCheck)
-            }
-
-            Scheduler.ACTION_CHECK -> {
-                val w = PrayerTimesCalc.window(ctx, date, prayer) ?: return
-                if (store.isPrayed(date, prayer) || now >= w.end) {
-                    Notifications.cancel(ctx, prayer)
-                    return
-                }
-                Notifications.showCheck(ctx, w)
-                val next = now + Scheduler.REPEAT_MS
-                if (next < w.end) Scheduler.scheduleCheck(ctx, w, next)
+                if (w != null && !store.isPrayed(date, prayer)) Notifications.showPrayerTime(ctx, w)
+                Scheduler.scheduleNag(ctx, now, fromNag = false)
             }
 
             Scheduler.ACTION_MARK_PRAYED -> {
                 store.setPrayed(date, prayer, true)
-                Scheduler.cancelCheck(ctx, prayer)
                 Notifications.cancel(ctx, prayer)
+                // Show the next unchecked prayer (quietly), or clear the reminder if none are left.
+                Notifications.showNag(ctx, Scheduler.pending(ctx, now), alert = false)
+                Scheduler.scheduleNag(ctx, now, fromNag = false)
             }
-
-            // The next 10-minute reminder is already scheduled; just dismiss this one.
-            Scheduler.ACTION_NOT_YET -> Notifications.cancel(ctx, prayer)
         }
     }
 }
